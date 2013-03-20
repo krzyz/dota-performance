@@ -6,6 +6,7 @@ require 'data_mapper'
 require 'json'
 require 'sass'
 require 'date'
+require 'rufus/scheduler'
 
 class Index < Sinatra::Base
   helpers do
@@ -43,9 +44,21 @@ class Index < Sinatra::Base
 
   end
 
+
   DataMapper::setup(:default, "sqlite3://#{Dir.pwd}/db/dota_per.db")
+
   configure :test do
     DataMapper.setup(:default, "sqlite::memory:")
+  end
+
+  configure do
+    scheduler = Rufus::Scheduler.start_new
+    set :scheduler, scheduler
+    scheduler.every('1d') do
+      User.all.each do |user|
+        user.get_matches
+      end
+    end
   end
 
   class User
