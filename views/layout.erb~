@@ -3,7 +3,10 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <link rel="stylesheet" href="<%= url('/stylesheets/style.css') %>"/>
-    <title>Lista mailingowa NKF</title>
+    <title>Dota 2 performance checker</title>
+    <script language="javascript" type="text/javascript" src="<%= url('/public/scripts/jquery.js') %>"></script>
+    <script language="javascript" type="text/javascript" src="<%= url('/public/scripts/jquery.flot.js') %>"></script>
+    <script language="javascript" type="text/javascript" src="<%= url('/public/scripts/jquery.flot.time.js') %>"></script>
   </head>
   <body>
     <header>

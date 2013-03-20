@@ -1,2 +1,54 @@
-Small dota 2 app
-Key: <%= text %>
+<p>Small dota 2 app</p>
+<form method=post>
+  Add user:
+  <input name="name" placeholder="name">
+  </input>
+  <input name="steam_id" placeholder="steam id">
+  </input>
+  <button type="submit">
+  add
+  </button>
+</form>
+
+<% unless text == nil%>
+<div id="placeholder"></div>
+<script>
+  var d1 = <%= text %>;
+  var options = { 
+    xaxis: {
+        mode: "time",
+        timeformat: "%Y-%m-%d"
+    },
+    yaxis: {
+      ticks: [[0, "0%"], [0.2, "20%"], [0.4, "40%"], [0.6, "60%"], [0.8, "80%"], [1, "100%"]],
+      min: 0,
+      max: 1
+    }
+  };
+  $(document).ready(function () {
+    $.plot($("#placeholder"), [ d1 ], options)
+  });
+</script>
+<% end %>
+
+<p>
+<form method=post>
+  Show data for user
+  <select name="user">
+  <% users.each do |usr| %>
+    <option value="<%= usr %>"><%= usr %></option>
+  <% end %>
+  </select>, 
+  mean from:
+  <input name="width" type="number" required="required" value="<%= last_width %>">
+  
+  </input>
+  <select name="type">
+    <option value="matches">matches</option>
+    <option value="days">days</option>
+  </select>
+  <button type="submit">
+    update
+  </button>
+</form>
+</p>

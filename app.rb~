@@ -4,16 +4,43 @@ require 'sinatra'
 require 'steam-condenser'
 require 'data_mapper'
 require 'json'
+require 'sass'
+require 'date'
 
 class Index < Sinatra::Base
   helpers do
-    def create_user(name, steam_id, webapi) 
-      User.create(
-        name: name,
-        dota_id: steam_id - 76561197960265728
-      )
-
+    def create_user(name, steam_id) 
+      dota_id = steam_id - 76561197960265728
+      begin
+        user = User.create(
+          name: name,
+          dota_id: dota_id
+        )
+        fasdgfdsg
+      rescue
+        erb :error, locals: { text: "Error creating user!" }
+      end
+      Process.detach(fork { user.get_matches })
     end
+
+    
+    
+    def to_flot(collection, type, width)
+      recent = []
+      output = []
+      collection.sort { |a, b| a[:date] <=> b[:date] }.each do |match|
+        if type == "matches"
+          recent << match[:won]
+          recent.shift if recent.length > width
+          percentage = recent.count { |result| result == true }.to_f/recent.length
+          output << [match[:date].to_time.to_i*1000, percentage] if recent.length >= width
+        elsif type == "days"
+          return
+        end
+      end
+      return output
+    end
+
   end
 
   DataMapper::setup(:default, "sqlite3://#{Dir.pwd}/db/dota_per.db")
@@ -25,19 +52,77 @@ class Index < Sinatra::Base
     include DataMapper::Resource
 
     property :id,      Serial
-    property :name,    String
-    property :dota_id, String, :unique => true
+    property :name,    String, :unique => true
+    property :dota_id, Integer, :unique => true
+    has n, :matches
+
+    def match_won?(match_id) #match_id - string, dota_id - integer
+      dota_id = self[:dota_id]
+      fetch = WebApi.get(:json, 'IDOTA2Match_570', 'GetMatchDetails', 1, {:match_id => match_id})
+      result = JSON.parse(fetch, opts = {symbolize_names: true})[:result]
+      # Magic: 1 XOR 2
+      # 1 - did radiance win
+      # 2 - was player in dire
+      # 2 - (player_slot & 128 ) != 0
+      radiant_win = result[:rediant_win] == 1
+      player_slot = result[:players].select { |player| player[:account_id] == dota_id }.first[:player_slot]
+      player_dire = (player_slot & 128) != 0
+      return radiant_win^player_dire
+    end
+
+
+    def get_matches
+      user = self
+      if last_match = Match.first(Match.user.dota_id => dota_id, order: [ :match_id.desc ])
+        last_match_id = last_match[:match_id].to_i
+      else
+        last_match_id = 0
+      end
+      remaining = 1
+      matches = []
+      last_id = 0
+      all = false
+      while remaining != 0 && all == false 
+        if last_id == 0
+          got = WebApi.get(:json, 'IDOTA2Match_570', 'GetMatchHistory', 1, {:account_id => dota_id})
+        else
+          got = WebApi.get(:json, 'IDOTA2Match_570', 'GetMatchHistory', 1, {:account_id => dota_id, :start_at_match_id => last_id - 1})
+        end
+        data = JSON.parse(got, opts = {symbolize_names: true})
+        puts "remaining #{remaining}"
+        all = !data[:result][:matches].select{ |x| x[:match_id] == last_match_id }.empty?
+        matches.concat data[:result][:matches].select{ |x| x[:match_id] > last_match_id }.collect { |x| [x[:match_id], x[:start_time]] }
+        remaining = data[:result][:results_remaining]
+        last_id = matches.last[0] if matches.last
+      end
+      for match in matches
+        new_match = Match.create(
+          won: self.match_won?(match[0]),
+          date: DateTime.strptime(match[1].to_s, '%s'),
+          match_id: match[0]
+        )
+        user.matches << new_match
+        user.save
+      end
+      #return matches
+    end
+
   end
 
   class Match
     include DataMapper::Resource
 
     property :id,       Serial
-    property :player,   String
     property :won,      Boolean
     property :date,     DateTime
-    property :match_id, String
+    property :match_id, Integer
+
+    belongs_to :user
   end
+
+  DataMapper.finalize
+  User.auto_upgrade!
+  Match.auto_upgrade!
 
 
   file = File.new('key', 'r')
@@ -51,26 +136,41 @@ class Index < Sinatra::Base
     sass :style
   end
 
-  def match_won?(match_id, dota_id)
-    fetch = WebApi.get(:json, 'IDOTA2Match_570', 'GetMatchDetails', 1, {:match_id => match_id})
-    result = JSON.parse(fetch, opts = {symbolize_names: true})[:result]
-    # Magic: 1 XOR 2
-    # 1 - did radiance win
-    # 2 - was player in dire
-    # 2 - (player_slot & 128 ) != 0
-    radiant_win = result[:rediant_win] == 1
-    player_slot = result[:players].select { |player| player[:match_id] == dota_id }.first
-    player_dire = (player_slot & 128) != 0
-    return [radiant_win,player_dire]
+  get '/public/scripts/:script' do
+    #begin
+    send_file('public/scripts/' + params[:script])
+    #rescue
+    #return "No script file #{params[:script]}"
+    #return '/public/scripts/' + params[:script]
+    #end
   end
 
   get '/?' do
-    #got = WebApi.get(:json, 'IDOTA2Match_570', 'GetMatchHistory', 1, {:account_id => 50958904})
-    #data = JSON.parse(got, opts = {symbolize_names: true})
-    #matches = data[:result][:matches].collect { |x| x[:match_id] }
     #got = WebApi.get(:json, 'IDOTA2Match_570', 'GetMatchDetails', 1, {:match_id => '143550516'})
     #data = JSON.parse(got, opts = {symbolize_names: true})
-    erb :index, locals: {text: match_won?('143005390', '50958904').to_s}
+    #matches = get_matches(50958904)
+    #create_user('krzyz', 76561198011224632)
+    #user = User.first(dota_id: 50958904)
+    #get_matches(50958904)
+    user = User.first(name: "krzyz")
+    Process.detach(fork{ user.get_matches })
+    users = User.all.collect { |usr| usr[:name] }
+    erb :index, locals: { text: nil, last_user: '', last_width: '', users: users }
+  end
+
+  post '/?' do
+    users = User.all.collect { |usr| usr[:name] }
+    if params[:steam_id != nil]
+      create_user(params[:name], params[:steam_id].to_i)
+    end
+    begin 
+      user = User.first(name: params[:user])
+    rescue
+      erb :error, locals: { text: "No user #{params[:user]}" }
+      return
+    end
+    user_matches = Match.all(:user => user)
+    erb :index, locals: { text: to_flot(user_matches, params[:type], params[:width].to_i).to_s, last_user: params[:user], last_width: params[:width], users: users }
   end
 end
 
