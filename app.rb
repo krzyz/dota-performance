@@ -165,8 +165,6 @@ class Index < Sinatra::Base
     #create_user('krzyz', 76561198011224632)
     #user = User.first(dota_id: 50958904)
     #get_matches(50958904)
-    user = User.first(name: "krzyz")
-    Process.detach(fork{ user.get_matches })
     users = User.all.collect { |usr| usr[:name] }
     erb :index, locals: { text: nil, last_user: '', last_width: '', users: users }
   end
